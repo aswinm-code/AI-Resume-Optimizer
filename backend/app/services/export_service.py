@@ -1,6 +1,5 @@
 import os
 
-from docx2pdf import convert
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -16,6 +15,10 @@ EXPORT_DIR = "app/exports/resumes"
 
 class ExportService:
 
+    # ==========================================================
+    # EXPORT DOCX
+    # ==========================================================
+
     @staticmethod
     def export_docx(
         db: Session,
@@ -29,46 +32,77 @@ class ExportService:
         )
 
         if not version:
+
             raise HTTPException(
                 status_code=404,
                 detail="Resume version not found."
             )
 
+        # ------------------------------------------------------
+        # Verify ownership
+        # ------------------------------------------------------
+
         if version.resume.user_id != user_id:
+
             raise HTTPException(
                 status_code=403,
                 detail="Access denied."
             )
+
+        # ------------------------------------------------------
+        # Create export directory
+        # ------------------------------------------------------
 
         os.makedirs(
             EXPORT_DIR,
             exist_ok=True
         )
 
-        filename = f"version_{version.id}.docx"
+        filename = (
+            f"version_{version.id}.docx"
+        )
 
         output_path = os.path.join(
             EXPORT_DIR,
             filename
         )
 
-        # Return existing file
+        # ------------------------------------------------------
+        # Return existing DOCX
+        # ------------------------------------------------------
+
         if os.path.exists(output_path):
-            return output_path
+
+            return {
+                "file_name": filename,
+                "file_path": output_path
+            }
+
+        # ------------------------------------------------------
+        # Convert optimized JSON → ParsedResume
+        # ------------------------------------------------------
 
         resume = ParsedResume.model_validate(
             version.optimized_json
         )
 
-        ATSResumeBuilder.build(
-            resume,
-            filename
+        # ------------------------------------------------------
+        # Generate DOCX
+        # ------------------------------------------------------
+
+        generated_path = ATSResumeBuilder.build(
+            resume=resume,
+            filename=filename
         )
 
         return {
-            "file_name": f"version_{version.id}.docx",
-            "file_path": output_path
-            }
+            "file_name": filename,
+            "file_path": generated_path
+        }
+
+    # ==========================================================
+    # EXPORT PDF
+    # ==========================================================
 
     @staticmethod
     def export_pdf(
@@ -77,24 +111,76 @@ class ExportService:
         version_id: int
     ):
 
-        docx_path = ExportService.export_docx(
+        version = ResumeVersionRepository.get_by_id(
             db,
-            user_id,
             version_id
         )
 
-        pdf_path = docx_path.replace(
-            ".docx",
-            ".pdf"
+        if not version:
+
+            raise HTTPException(
+                status_code=404,
+                detail="Resume version not found."
+            )
+
+        # ------------------------------------------------------
+        # Verify ownership
+        # ------------------------------------------------------
+
+        if version.resume.user_id != user_id:
+
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied."
+            )
+
+        # ------------------------------------------------------
+        # Create export directory
+        # ------------------------------------------------------
+
+        os.makedirs(
+            EXPORT_DIR,
+            exist_ok=True
         )
 
+        filename = (
+            f"version_{version.id}.pdf"
+        )
+
+        output_path = os.path.join(
+            EXPORT_DIR,
+            filename
+        )
+
+        # ------------------------------------------------------
         # Return existing PDF
-        if os.path.exists(pdf_path):
-            return pdf_path
+        # ------------------------------------------------------
 
-        convert(
-            docx_path,
-            pdf_path
+        if os.path.exists(output_path):
+
+            return {
+                "file_name": filename,
+                "file_path": output_path
+            }
+
+        # ------------------------------------------------------
+        # Convert optimized JSON → ParsedResume
+        # ------------------------------------------------------
+
+        resume = ParsedResume.model_validate(
+            version.optimized_json
         )
 
-        return pdf_path
+        # ------------------------------------------------------
+        # Generate DOCX + PDF
+        # ------------------------------------------------------
+
+        generated_pdf = ATSResumeBuilder.build_pdf(
+            resume=resume,
+            filename=filename
+        )
+
+        return {
+            "file_name": filename,
+            "file_path": generated_pdf
+        }
