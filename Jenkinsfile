@@ -10,9 +10,12 @@ pipeline {
             }
         }
 
-        stage('Test') {
+        stage('Frontend Build') {
             steps {
-                echo 'Code checked out successfully'
+                dir('frontend') {
+                    bat 'npm install'
+                    bat 'npm run build'
+                }
             }
         }
     }
